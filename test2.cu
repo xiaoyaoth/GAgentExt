@@ -128,7 +128,7 @@ __global__ void scanInsert(){
 	GAgent *ag = new GAgent();
 }
 
-int main(){
+int main2(){
 	int *a_dev;
 	checkCudaErrors(cudaMalloc((void**)&a_dev, AGENTNO * sizeof(int)));
 	thrust::device_ptr<int> a_ptr(a_dev);

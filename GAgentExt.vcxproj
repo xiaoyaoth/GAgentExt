@@ -155,6 +155,17 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu" />
+    <CudaCompile Include="test2.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="gsimapp_boid.cuh" />
+    <None Include="gsimapp_header.cuh" />
+    <None Include="gsimcore.cuh" />
+    <None Include="gsimlib_header.cuh" />
+    <None Include="gsimvisual.cuh" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="config.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

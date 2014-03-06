@@ -1,6 +1,5 @@
 #ifndef GSIMCORE_H
 #define GSIMCORE_H
-
 #include "gsimlib_header.cuh"
 #include "gsimapp_header.cuh"
 #include <thrust/sort.h>
@@ -287,8 +286,9 @@ __device__ float Continuous2D::tds(const float2d_t loc1, const float2d_t loc2) c
 	return sqrt(x);
 }
 __device__ dataUnion* Continuous2D::nextNeighborInit2(int agId, float2d_t agLoc, float range, iterInfo &info) const {
-	const unsigned int tid	= threadIdx.x;
-	const unsigned int idx	= threadIdx.x + blockIdx.x * blockDim.x;
+	const unsigned int tid = threadIdx.x;
+	const unsigned int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	const unsigned int wid = tid >> 32;
 
 	info.myLoc = agLoc;
 	info.ptr = -1;
@@ -318,8 +318,13 @@ __device__ dataUnion* Continuous2D::nextNeighborInit2(int agId, float2d_t agLoc,
 	celldry[tid]=info.cellDR.y;
 
 	const unsigned int lane = tid&31;
+	int lastFullWarp = AGENT_NO_D / warpSize;
+	int totalFullWarpThreads = lastFullWarp * warpSize;
+	int temp = 32;
+	if (idx >= totalFullWarpThreads)
+		temp = AGENT_NO_D - totalFullWarpThreads;
 
-	for (int i=0; i<32; i++){
+	for (int i=0; i<temp; i++){
 #ifdef BOID_DEBUG
 		;if (celluly[tid-lane+i] < 0) printf("zhongjian: y: %d, tid-lane+i: %d\n", celluly[tid-lane+i], tid-lane+i);
 #endif
@@ -600,14 +605,15 @@ __device__ int zcode(int x, int y){
 }
 __global__ void c2dUtil::gen_hash_kernel(int *hash, Continuous2D *c2d)
 {
-	__syncthreads();
 	GAgent *ag = c2d->obtainAgentPerThread();
-	int idx = ag->getId();
-	float2d_t myLoc = ag->getLoc();
-	int xhash = (int)(myLoc.x/CLEN_X);
-	int yhash = (int)(myLoc.y/CLEN_Y);
-	hash[idx] = zcode(xhash, yhash);
-	c2d->neighborIdx[idx] = idx;
+	if (ag != NULL) {
+		int idx = ag->getId();
+		float2d_t myLoc = ag->getLoc();
+		int xhash = (int)(myLoc.x/CLEN_X);
+		int yhash = (int)(myLoc.y/CLEN_Y);
+		hash[idx] = zcode(xhash, yhash);
+		c2d->neighborIdx[idx] = idx;
+	}
 	//printf("id: %d, hash: %d, neiIdx: %d\n", idx, hash[idx], c2d->neighborIdx[idx]);
 }
 __global__ void c2dUtil::gen_cellIdx_kernel(int *hash, Continuous2D *c2d)
@@ -722,12 +728,8 @@ __global__ void schUtil::swapAgentsInScheduler(GModel *model) {
 __global__ void schUtil::step(GModel *gm){
 	GScheduler *sch = gm->getScheduler();
 	GAgent *ag = sch->obtainAgentPerThread();
-#ifdef BOID_DEBUG
-	if (ag == NULL)
-		printf("schUtil::step: ag is NULL\n");
-#endif
-	//__syncthreads();
-	ag->step(gm);
+	if (ag != NULL)
+		ag->step(gm);
 }
 
 //namespace GRandomGen Utility
@@ -737,6 +739,6 @@ __global__ void rgenUtil::initStates(GRandomGen *rgen, int seed){
 }
 
 namespace gsim{
-
+	
 };
 #endif

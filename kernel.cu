@@ -320,7 +320,8 @@ void mainWork(char *config_file){
 #ifdef _WIN32
 	GSimVisual::getInstance().setWorld(model_h->world);
 	for (int i=0; i<STEPS; i++){
-		//if ((i%(STEPS/10))==0) printf("STEP:%d ", i);
+		//if ((i%(STEPS/10))==0) 
+		printf("STEP:%d ", i);
 		oneStep(model, model_h);
 		GSimVisual::getInstance().animate();
 		writeRandDebug(i, devRandDebug);

@@ -126,15 +126,17 @@ public:
 __global__ void visUtil::paint(uchar4 *devPtr, const Continuous2D *world){
 
 	GAgent *ag = world->obtainAgentPerThread();
-	float2d_t myLoc = ag->getLoc();
-	int canvasX = (int)(myLoc.x*256/1000);
-	int canvasY = (int)(myLoc.y*256/1000);
-	int canvasIdx = canvasY*256 + canvasX;
-	const int idx = canvasIdx;
-	devPtr[idx].x = 0;
-	devPtr[idx].y = 255;
-	devPtr[idx].z = 0;
-	devPtr[idx].w = 255;
+	if (ag != NULL){
+		float2d_t myLoc = ag->getLoc();
+		int canvasX = (int)(myLoc.x*256/1000);
+		int canvasY = (int)(myLoc.y*256/1000);
+		int canvasIdx = canvasY*256 + canvasX;
+		const int idx = canvasIdx;
+		devPtr[idx].x = 0;
+		devPtr[idx].y = 255;
+		devPtr[idx].z = 0;
+		devPtr[idx].w = 255;
+	}
 }
 
 #endif

@@ -104,6 +104,12 @@ void readConfig(char *config_file){
 			cudaMemcpyToSymbol(AGENT_NO_D, &AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
 			getLastCudaError("readConfig");
 		}
+		if(strcmp(p, "MAX_AGENT_NO")==0){
+			p=strtok(NULL, "=");
+			MAX_AGENT_NO = atoi(p);
+			cudaMemcpyToSymbol(MAX_AGENT_NO_D, &MAX_AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
+			getLastCudaError("readConfig");
+		}
 		if(strcmp(p, "BOARDER_L")==0){
 			p=strtok(NULL, "=");
 			BOARDER_L_H = atoi(p);
@@ -275,8 +281,6 @@ void oneStep(BoidModel *model, BoidModel *model_h){
 	c2dUtil::genNeighbor(model_h->world, model_h->worldH);
 	//checkEverything<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
 	schUtil::step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
-	c2dUtil::swapAgentsInWorld<<<gSize, BLOCK_SIZE>>>(model_h->world);
-	schUtil::swapAgentsInScheduler<<<gSize, BLOCK_SIZE>>>(model);
 	getLastCudaError("end loop");
 }
 

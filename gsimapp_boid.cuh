@@ -11,7 +11,8 @@ class BoidModel : public GModel{
 public:
 	Continuous2D *world, *worldH;
 	GRandomGen *rgen, *rgenH;
-	PreyBoidData_t *preyBoidDataArray;
+	//PreyBoidData_t *preyBoidDataArray;
+	//PreyBoidData_t *preyBoidDataArrayCopy;
 
 	float cohesion;
 	float avoidance;
@@ -43,7 +44,6 @@ public:
 	__device__ void  setOrientation2D(float val);
 	__device__ float2d_t momentum();
 	__device__ virtual void step(GModel* model) = 0;
-	__device__ virtual void putDataInSmem(dataUnion &dataElem) = 0;	
 };
 class FoodBoid : public BaseBoid{
 	float scale;
@@ -54,8 +54,6 @@ public:
 	__device__ void reduce();
 	__device__ void increase();
 	__device__ void step(GModel* model);
-	__device__ void putDataInSmem(dataUnion &dataElem){
-	}
 };
 class PreyBoid : public BaseBoid{
 public:
@@ -65,7 +63,7 @@ public:
 	__device__ PreyBoid(PreyBoid *twin, BoidModel *model){
 		PreyBoidData_t *twinData = (PreyBoidData_t*)twin->getData();
 		int id = twinData->id;
-		PreyBoidData_t *myData = &model->preyBoidDataArray[AGENT_NO_D+id];
+		PreyBoidData_t *myData = new PreyBoidData_t();
 		myData->HUNGER_LIMIT = twinData->HUNGER_LIMIT;
 		myData->STARVE_LIMIT = twinData->STARVE_LIMIT;
 		myData->DEFAULT_SPEED = twinData->DEFAULT_SPEED;
@@ -79,11 +77,12 @@ public:
 		this->model = model;
 		this->time = twin->time;
 		this->rank = twin->rank;
-		this->dummy = twin;
+		//this->dummy = twin;
 	}
 	__device__ PreyBoid(float x, float y, BoidModel *model){
 		int id = this->initId();
-		PreyBoidData_t *myData = &model->preyBoidDataArray[id];
+		PreyBoidData_t *myData = new PreyBoidData_t();
+		PreyBoidData_t *myDataCopy = new PreyBoidData_t();
 		myData->HUNGER_LIMIT = CONSTANT::PREY_HUNGER_LIMIT;
 		myData->STARVE_LIMIT = CONSTANT::PREY_STARVE_LIMIT;
 		myData->DEFAULT_SPEED = 0.7;
@@ -95,11 +94,14 @@ public:
 		myData->btype = PREY_BOID;
 		myData->bstate = SEEKING_MATE;
 		myData->dead = false;
+		*myDataCopy = *myData;
+		
 		this->data = myData;
+		this->dataCopy = myDataCopy;
 		this->model = model;
 		this->time = 0;
 		this->rank = 0;
-		this->dummy = new PreyBoid(this, model);
+		//this->dummy = new PreyBoid(this, model);
 	}
 	__device__ bool hungry();
 	__device__ void eat(FoodBoid *food);
@@ -112,7 +114,6 @@ public:
 	__device__ float2d_t avoidance(const Continuous2D *world, iterInfo &info);
 	__device__ void step(GModel *state);
 	__device__ void step1(GModel *state);
-	__device__ void putDataInSmem(dataUnion &dataElem);
 };
 class PredatorBoid : public BaseBoid{
 public:
@@ -144,8 +145,6 @@ public:
 	__device__ float2d_t huntByLockOnRandom();
 	__device__ float2d_t stray();
 	__device__ void step(GModel *model);
-	__device__ void putDataInSmem(dataUnion &dataElem){
-	}
 };
 
 //BoidModel
@@ -157,7 +156,7 @@ void BoidModel::allocOnDevice(){
 	worldH->allocOnDevice();
 	cudaMalloc((void**)&world, sizeof(Continuous2D));
 	cudaMemcpy(world, worldH, sizeof(Continuous2D), cudaMemcpyHostToDevice);
-	cudaMalloc((void**)&preyBoidDataArray, 2*AGENT_NO*sizeof(PreyBoidData_t));
+	//cudaMalloc((void**)&preyBoidDataArray, 2*AGENT_NO*sizeof(PreyBoidData_t));
 	//cudaMemcpyToSymbol(this->schedulerH->assignments, &this->worldH->neighborIdx,
 		//sizeof(int), 0, cudaMemcpyDeviceToDevice);
 	//init GRandomGen
@@ -437,7 +436,7 @@ __device__ void PreyBoid::step(GModel *model){
 		dy = dy / dist * boidModel->jump;
 	}
 	 
-	PreyBoidData_t *dummyDataPtr = (PreyBoidData_t*)dummy->getData();
+	PreyBoidData_t *dummyDataPtr = (PreyBoidData_t *)this->dataCopy;
 	float2d_t myLoc = this->data->loc;
 	dummyDataPtr->lastd.x = dx;
 	dummyDataPtr->lastd.y = dy;
@@ -476,15 +475,6 @@ __device__ void PreyBoid::step1(GModel *model){
 		}
 		elem = world->nextAgentDataIntoSharedMem(info);
 	}
-}
-__device__ void PreyBoid::putDataInSmem(dataUnion &dataElem){
-	PreyBoidData_t *myData = (PreyBoidData_t*)this->data;
-	dataElem.bstate = myData->bstate;
-	dataElem.btype = myData->btype;
-	dataElem.dead = myData->dead;
-	dataElem.id = myData->id;
-	dataElem.lastd = myData->lastd;
-	dataElem.loc = myData->loc;
 }
 
 //PredatorBoid

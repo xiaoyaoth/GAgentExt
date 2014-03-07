@@ -9,7 +9,8 @@
 #include "device_launch_parameters.h"
 #include "float.h"
 
-__constant__ int AGENT_NO_D;	//copied from host
+__constant__ int MAX_AGENT_NO_D;//copied from host
+__device__ int AGENT_NO_D;	//copied from host
 __constant__ int CELL_NO_D;		//copied from host
 __constant__ int BOARDER_L_D;	//copied from host
 __constant__ int BOARDER_R_D;	//copied from host
@@ -30,6 +31,7 @@ int BOARDER_R_H;	//read from config
 int BOARDER_U_H;	//read from config
 int BOARDER_D_H;	//read from config
 int AGENT_NO;		//read from config
+int MAX_AGENT_NO;	//read from config
 int STEPS;			//read from config
 int SELECTION;		//read from config
 bool VISUALIZE;		//read from config

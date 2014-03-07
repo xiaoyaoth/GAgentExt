@@ -41,12 +41,10 @@ namespace c2dUtil{
 	__global__ void gen_cellIdx_kernel(int *hash, Continuous2D *c2d);
 	void queryNeighbor(Continuous2D *c2d);
 	void genNeighbor(Continuous2D *world, Continuous2D *world_h);
-	__global__ void swapAgentsInWorld(Continuous2D *world);
 };
 namespace schUtil{
 	void sortWithKey(GModel *model);
 	__global__ void scheduleRepeatingAllAgents(GModel *gm);
-	__global__ void swapAgentsInScheduler(GModel *gm);
 	__global__ void step(GModel *gm);
 
 }
@@ -62,18 +60,18 @@ public:
 };
 class GAgent : public GSteppable{
 protected:
-	GAgent *dummy;
+	//GAgent *dummy;
 	GAgentData_t *data;
+	GAgentData_t *dataCopy;
 	__device__ int initId();
+	__device__ int addId();
 public:
 	__device__ void allocOnDevice();
 	__device__ int getId() const;
-	__device__ void setDummy(GAgent *dummy);
-	__device__ GAgent* getDummy() const;
 	__device__ GAgentData_t *getData();
 	__device__ float2d_t getLoc() const;
+	__device__ void swapDataAndCopy();
 	__device__ virtual void step(GModel *model) = 0;
-	__device__ virtual void putDataInSmem(dataUnion &dataElem) = 0;
 };
 class GIterativeAgent : public GAgent{
 private:
@@ -88,7 +86,6 @@ public:
 			this->interval = interval;
 	}
 	__device__ void step(GModel *model);
-	__device__ void putDataInSmem(dataUnion &dataElem){}
 };
 class Continuous2D{
 public:
@@ -113,7 +110,6 @@ public:
 	//agent list manipulation
 	__device__ bool add(GAgent *ag, int idx);
 	__device__ bool remove(GAgent *ag);
-	__device__ void swap();
 	__device__ GAgent* obtainAgentPerThread() const;
 	__device__ GAgent* obtainAgentByInfoPtr(int ptr) const;
 	__device__ GAgent* obtainAgent(int agIdx) const;
@@ -152,7 +148,6 @@ public:
 	__device__ GAgent* obtainAgentPerThread() const;
 	__device__ GAgent* obtainAgentById(int idx) const;
 	__device__ bool add(GAgent* ag, int idx);
-	__device__ bool swap();
 	void allocOnHost();
 	void allocOnDevice();
 	friend void schUtil::sortWithKey(GModel *model);
@@ -210,14 +205,6 @@ __device__ bool Continuous2D::add(GAgent *ag, int idx) {
 	return true;
 }
 __device__ bool Continuous2D::remove(GAgent *ag){return true;}
-__device__ void Continuous2D::swap(){
-	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx<AGENT_NO_D){
-		GAgent *ag = this->allAgents[idx];
-		GAgent *dummy = ag->getDummy();
-		this->allAgents[idx] = dummy;
-	}
-}
 __device__ GAgent* Continuous2D::obtainAgentPerThread() const {
 	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	GAgent *ag;
@@ -276,7 +263,6 @@ __device__ float Continuous2D::tdy(float ay, float by) const {
 	else
 		return BOARDER_D_D-dy;
 }
-#define SQRT_MAGIC_F 0x5f3759df 
 __device__ float Continuous2D::tds(const float2d_t loc1, const float2d_t loc2) const {
 	float dx = loc1.x - loc2.x;
 	float dxsq = dx*dx;
@@ -460,19 +446,16 @@ __device__ GAgentData_t *Continuous2D::nextAgentData(iterInfo &info) const {
 	info.ptr++;
 	return ag->getData();
 }
+
 //GAgent
 __device__ int GAgent::initId() {
 	return threadIdx.x + blockIdx.x * blockDim.x;
 }
+__device__ int GAgent::addId(){
+	return atomicInc((unsigned int *)&AGENT_NO_D, MAX_AGENT_NO_D);
+}
 __device__ void GAgent::allocOnDevice(){
 	this->data->id = threadIdx.x + blockIdx.x * blockDim.x;
-}
-__device__ void GAgent::setDummy(GAgent* dummy){
-	this->dummy = dummy;
-	dummy->dummy = this;
-}
-__device__ GAgent* GAgent::getDummy() const {
-	return this->dummy;
 }
 __device__ GAgentData_t *GAgent::getData(){
 	return this->data;
@@ -482,6 +465,11 @@ __device__ float2d_t GAgent::getLoc() const{
 }
 __device__ int	GAgent::getId() const {
 	return this->data->id;
+}
+__device__ void GAgent::swapDataAndCopy() {
+	GAgentData_t *temp = this->data;
+	this->data = this->dataCopy;
+	this->dataCopy = temp;
 }
 
 //GIterativeAgent
@@ -534,14 +522,6 @@ __device__ bool GScheduler::add(GAgent *ag, int idx){
 	if(idx>=AGENT_NO_D)
 		return false;
 	this->allAgents[idx] = ag;
-	return true;
-}
-__device__ bool GScheduler::swap(){
-	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx<AGENT_NO_D){
-		GAgent *ag = this->allAgents[idx];
-		this->allAgents[idx] = ag->getDummy();
-	}
 	return true;
 }
 void GScheduler::allocOnHost(){
@@ -691,9 +671,6 @@ void c2dUtil::genNeighbor(Continuous2D *world, Continuous2D *world_h)
 	cudaFree(hash);
 	getLastCudaError("genNeighbor:cudaFree:hash");
 }
-__global__ void c2dUtil::swapAgentsInWorld(Continuous2D *world){
-	world->swap();
-}
 
 //namespace Scheduler Utility
 struct SchdulerComp : public thrust::binary_function<GAgent, GAgent, bool> {
@@ -722,14 +699,13 @@ __global__ void schUtil::scheduleRepeatingAllAgents(GModel *gm){
 		sch->scheduleRepeating(0,0,ag,1);
 	}
 }
-__global__ void schUtil::swapAgentsInScheduler(GModel *model) {
-	model->getScheduler()->swap();
-}
 __global__ void schUtil::step(GModel *gm){
 	GScheduler *sch = gm->getScheduler();
 	GAgent *ag = sch->obtainAgentPerThread();
-	if (ag != NULL)
+	if (ag != NULL) {
 		ag->step(gm);
+		ag->swapDataAndCopy();
+	}
 }
 
 //namespace GRandomGen Utility

@@ -46,6 +46,7 @@ void initOnDevice(float *x_pos, float *y_pos){
 	cudaMemcpy(y_pos, y_pos_h, floatDataSize, cudaMemcpyHostToDevice);
 	getLastCudaError("initOnDevice");
 }
+
 __global__ void addAgentsOnDevice(BoidModel *gm, float *x_pos, float *y_pos){
 	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx < AGENT_NO_D){ // user init step

@@ -16,7 +16,7 @@ class GIterativeAgent;
 class Continuous2D;
 class GScheduler;
 class GModel;
-class GRandomGen;
+class GRandom;
 
 typedef struct iter_info_per_thread
 {
@@ -47,9 +47,6 @@ namespace schUtil{
 	__global__ void scheduleRepeatingAllAgents(GModel *gm);
 	__global__ void step(GModel *gm);
 
-}
-namespace rgenUtil{
-	__global__ void initStates(GRandomGen *rgen, int seed);
 }
 
 class GSteppable{
@@ -153,16 +150,6 @@ public:
 	friend void schUtil::sortWithKey(GModel *model);
 	//friend class GModel;
 };
-class GRandomGen{
-public:
-	curandState *states;
-public:
-	void allocOnDevice();
-	__device__ float nextFloat();
-	__device__ float nextGaussian();
-	__device__ float nextFloat(curandState *state);
-	friend __global__ void rgenUtil::initStates(GRandomGen *rgen, int seed);
-};
 class GModel{
 protected:
 	GScheduler *scheduler, *schedulerH;
@@ -174,13 +161,24 @@ public:
 	__device__ void foo();
 	friend void schUtil::sortWithKey(GModel *model);
 };
+class GRandom {
+	curandState rState;
+public:
+	__device__ GRandom(int seed, int agId) {
+		curand_init(seed, agId, 0, &rState);
+	}
+
+	__device__ float uniform(){
+		return curand_uniform(&this->rState);
+	}
+};
 
 //Continuous2D
 void Continuous2D::allocOnDevice(){
-	size_t sizeAgArray = AGENT_NO*sizeof(int);
+	size_t sizeAgArray = MAX_AGENT_NO*sizeof(int);
 	size_t sizeCellArray = CELL_NO*sizeof(int);
 
-	cudaMalloc((void**)&this->allAgents, AGENT_NO*sizeof(GAgent*));
+	cudaMalloc((void**)&this->allAgents, MAX_AGENT_NO*sizeof(GAgent*));
 	getLastCudaError("Continuous2D():cudaMalloc:allAgents");
 	cudaMalloc((void**)&neighborIdx, sizeAgArray);
 	getLastCudaError("Continuous2D():cudaMalloc:neighborIdx");
@@ -190,7 +188,7 @@ void Continuous2D::allocOnDevice(){
 	getLastCudaError("Continuous2D():cudaMalloc:cellIdxEnd");
 }
 void Continuous2D::allocOnHost(){
-	size_t sizeAgArray = AGENT_NO*sizeof(int);
+	size_t sizeAgArray = MAX_AGENT_NO*sizeof(int);
 	size_t sizeCellArray = CELL_NO*sizeof(int);
 	neighborIdx = (int*)malloc(sizeAgArray);
 	cellIdxStart = (int*)malloc(sizeCellArray);
@@ -528,7 +526,7 @@ void GScheduler::allocOnHost(){
 }
 void GScheduler::allocOnDevice(){
 	this->assignments = NULL;
-	cudaMalloc((void**)&allAgents, AGENT_NO*sizeof(GAgent*));
+	cudaMalloc((void**)&allAgents, MAX_AGENT_NO*sizeof(GAgent*));
 	cudaMalloc((void**)&time, sizeof(int));
 	cudaMalloc((void**)&steps, sizeof(int));
 	getLastCudaError("Scheduler::allocOnDevice:cudaMalloc");
@@ -551,23 +549,6 @@ __device__ GScheduler* GModel::getScheduler() const {
 __device__ void GModel::addToScheduler(GAgent *ag, int idx){
 	this->scheduler->add(ag, idx);
 }
-
-//GRandomGen
-void GRandomGen::allocOnDevice(){
-	size_t genRandStatesSize = GRID_SIZE*BLOCK_SIZE*sizeof(curandState);
-	printf("curandStateSize: %d\n", genRandStatesSize);
-	cudaMalloc((void**)&states,genRandStatesSize);
-	getLastCudaError("GRandomGen::allocOnDevice");
-}
-__device__ float GRandomGen::nextFloat(){
-	//int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	return 0;
-	//return curand_uniform(&states[idx]);
-}
-__device__ float GRandomGen::nextFloat(curandState *state){
-	return curand_uniform(state);
-}
-__device__ float GRandomGen::nextGaussian(){return 0;}
 
 //namespace continuous2D Utility
 __device__ int zcode(int x, int y){
@@ -706,12 +687,6 @@ __global__ void schUtil::step(GModel *gm){
 		ag->step(gm);
 		ag->swapDataAndCopy();
 	}
-}
-
-//namespace GRandomGen Utility
-__global__ void rgenUtil::initStates(GRandomGen *rgen, int seed){
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	curand_init(seed, idx, 0, &rgen->states[idx]);
 }
 
 namespace gsim{

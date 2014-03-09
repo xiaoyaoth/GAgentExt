@@ -10,9 +10,6 @@
 class BoidModel : public GModel{
 public:
 	Continuous2D *world, *worldH;
-	GRandomGen *rgen, *rgenH;
-	//PreyBoidData_t *preyBoidDataArray;
-	//PreyBoidData_t *preyBoidDataArrayCopy;
 
 	float cohesion;
 	float avoidance;
@@ -40,6 +37,7 @@ public:
 class BaseBoid : public GAgent {
 public:
 	BoidModel *model;
+	GRandom *random;
 	__device__ float getOrientation2D();
 	__device__ void  setOrientation2D(float val);
 	__device__ float2d_t momentum();
@@ -60,25 +58,7 @@ public:
 	__device__ PreyBoid(){
 		PreyBoid(0,0, NULL);
 	}
-	__device__ PreyBoid(PreyBoid *twin, BoidModel *model){
-		PreyBoidData_t *twinData = (PreyBoidData_t*)twin->getData();
-		int id = twinData->id;
-		PreyBoidData_t *myData = new PreyBoidData_t();
-		myData->HUNGER_LIMIT = twinData->HUNGER_LIMIT;
-		myData->STARVE_LIMIT = twinData->STARVE_LIMIT;
-		myData->DEFAULT_SPEED = twinData->DEFAULT_SPEED;
-		myData->id = id;
-		myData->loc = twinData->loc;
-		myData->lastd = twinData->lastd;
-		myData->btype = twinData->btype;
-		myData->bstate = twinData->bstate;
-		myData->dead = twinData->dead;
-		this->data = myData;
-		this->model = model;
-		this->time = twin->time;
-		this->rank = twin->rank;
-		//this->dummy = twin;
-	}
+
 	__device__ PreyBoid(float x, float y, BoidModel *model){
 		int id = this->initId();
 		PreyBoidData_t *myData = new PreyBoidData_t();
@@ -101,14 +81,15 @@ public:
 		this->model = model;
 		this->time = 0;
 		this->rank = 0;
-		//this->dummy = new PreyBoid(this, model);
+
+		this->random = new GRandom(2345, id);
 	}
 	__device__ bool hungry();
 	__device__ void eat(FoodBoid *food);
 	__device__ bool starved();
 	__device__ bool readyToMate();
 	__device__ void setRandomSpeed();
-	__device__ float2d_t randomness(GRandomGen *gen);
+	__device__ float2d_t randomness(GRandom *gen);
 	__device__ float2d_t consistency(const Continuous2D *world, iterInfo &info);
 	__device__ float2d_t cohesion(const Continuous2D *world, iterInfo &info);
 	__device__ float2d_t avoidance(const Continuous2D *world, iterInfo &info);
@@ -139,7 +120,7 @@ public:
 	__device__ bool hungry();
 	__device__ void feast();
 	__device__ bool starved();
-	__device__ float2d_t randomness(GRandomGen *gen);
+	__device__ float2d_t randomness(GRandom *gen);
 	__device__ float2d_t huntPrimitive();
 	__device__ float2d_t huntByLockOnNearest();
 	__device__ float2d_t huntByLockOnRandom();
@@ -262,11 +243,12 @@ __device__ bool PreyBoid::readyToMate(){
 }
 __device__ void PreyBoid::setRandomSpeed(){
 	PreyBoidData_t *myData = (PreyBoidData_t*)this->data;
-	myData->DEFAULT_SPEED = CONSTANT::PREY_STD_SPEED + 
-		this->model->rgen->nextGaussian() * 0.2;
+	myData->DEFAULT_SPEED = CONSTANT::PREY_STD_SPEED 
+		//+ this->model->rgen->nextGaussian() * 0.2
+		;
 }
 
-__device__ float2d_t PreyBoid::randomness(GRandomGen *gen){
+__device__ float2d_t PreyBoid::randomness(GRandom *gen){
 	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	float x = randDebug[STRIP*idx];
 	float y = randDebug[STRIP*idx+1];
@@ -443,6 +425,9 @@ __device__ void PreyBoid::step(GModel *model){
 	dummyDataPtr->loc.x = world->stx(myLoc.x + dx);
 	dummyDataPtr->loc.y = world->sty(myLoc.y + dy);
 
+	float dice = this->random->uniform();
+	float test = dice;
+
 	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
 	randDebug[STRIP*this->data->id+1] = dummyDataPtr->loc.y;
 }
@@ -484,7 +469,7 @@ __device__ void PredatorBoid::decelerate(){return;}
 __device__ bool PredatorBoid::hungry(){return true;}
 __device__ void PredatorBoid::feast(){return;}
 __device__ bool PredatorBoid::starved(){return true;}
-__device__ float2d_t PredatorBoid::randomness(GRandomGen *gen){return float2d_t();}
+__device__ float2d_t PredatorBoid::randomness(GRandom *gen){return float2d_t();}
 __device__ float2d_t PredatorBoid::huntPrimitive(){return float2d_t();}
 __device__ float2d_t PredatorBoid::huntByLockOnNearest(){return float2d_t();}
 __device__ float2d_t PredatorBoid::huntByLockOnRandom(){return float2d_t();}

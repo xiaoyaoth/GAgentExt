@@ -11,6 +11,7 @@
 
 __constant__ int MAX_AGENT_NO_D;//copied from host
 __device__ int AGENT_NO_D;	//copied from host
+__device__ int AGENT_NO_TEMP_D; //init iteratively on device
 __constant__ int CELL_NO_D;		//copied from host
 __constant__ int BOARDER_L_D;	//copied from host
 __constant__ int BOARDER_R_D;	//copied from host
@@ -25,6 +26,7 @@ int CELL_NO;		//CNO_PER_DIM * CNO_PER_DIM;
 int DISCRETI;		//read from config
 float RANGE_H;		//read from config
 size_t HEAP_SIZE;	//read from config
+size_t STACK_SIZE;	//read from config
 
 int BOARDER_L_H;	//read from config
 int BOARDER_R_H;	//read from config

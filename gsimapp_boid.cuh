@@ -37,7 +37,7 @@ public:
 class BaseBoid : public GAgent {
 public:
 	BoidModel *model;
-	GRandom *random;
+	//GRandom *random;
 	__device__ float getOrientation2D();
 	__device__ void  setOrientation2D(float val);
 	__device__ float2d_t momentum();
@@ -55,12 +55,7 @@ public:
 };
 class PreyBoid : public BaseBoid{
 public:
-	__device__ PreyBoid(){
-		PreyBoid(0,0, NULL);
-	}
-
-	__device__ PreyBoid(float x, float y, BoidModel *model){
-		int id = this->initId();
+	__device__ void init(int id, float x, float y, BoidModel *model){
 		PreyBoidData_t *myData = new PreyBoidData_t();
 		PreyBoidData_t *myDataCopy = new PreyBoidData_t();
 		myData->HUNGER_LIMIT = CONSTANT::PREY_HUNGER_LIMIT;
@@ -82,7 +77,18 @@ public:
 		this->time = 0;
 		this->rank = 0;
 
-		this->random = new GRandom(2345, id);
+		//this->random = new GRandom(2345, id);
+	}
+	__device__ PreyBoid(){
+		int id = this->initId();
+		init(id, 0, 0, NULL);
+	}
+	__device__ PreyBoid(float x, float y, BoidModel *model){
+		int id = this->initId();
+		init(id, x, y, model);
+	}
+	__device__ PreyBoid(int id, float x, float y, BoidModel *model){
+		init(id, x, y, model);
 	}
 	__device__ bool hungry();
 	__device__ void eat(FoodBoid *food);
@@ -391,7 +397,7 @@ __device__ float2d_t PreyBoid::avoidance(const Continuous2D *world, iterInfo &in
 
 __device__ void PreyBoid::step(GModel *model){
 	__syncthreads(); //这个barrier可以放到刚进step，但是不能放到getLoc()之后， 不然sync会出错
-	const BoidModel *boidModel = (BoidModel*) model;
+	BoidModel *boidModel = (BoidModel*) model;
 	const Continuous2D *world = boidModel->getWorld();
 	iterInfo info;
 	float2d_t avoid = this->avoidance(world, info);
@@ -425,8 +431,12 @@ __device__ void PreyBoid::step(GModel *model){
 	dummyDataPtr->loc.x = world->stx(myLoc.x + dx);
 	dummyDataPtr->loc.y = world->sty(myLoc.y + dy);
 
-	float dice = this->random->uniform();
-	float test = dice;
+	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D) {
+		int idNew = model->incAgentNo();
+		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
+		boidModel->getWorld()->add(preyNew, idNew);
+		boidModel->getScheduler()->add(preyNew, idNew);
+	}
 
 	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
 	randDebug[STRIP*this->data->id+1] = dummyDataPtr->loc.y;

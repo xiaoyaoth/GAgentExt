@@ -50,7 +50,7 @@ void initOnDevice(float *x_pos, float *y_pos){
 __global__ void addAgentsOnDevice(BoidModel *gm, float *x_pos, float *y_pos){
 	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx < AGENT_NO_D){ // user init step
-		PreyBoid *ag = new PreyBoid(x_pos[idx], y_pos[idx], gm);
+		PreyBoid *ag = new PreyBoid(idx, x_pos[idx], y_pos[idx], gm);
 		gm->addToScheduler(ag, idx);
 		gm->addToWorld(ag, idx);
 	}
@@ -103,6 +103,7 @@ void readConfig(char *config_file){
 			p=strtok(NULL, "=");
 			AGENT_NO = atoi(p);
 			cudaMemcpyToSymbol(AGENT_NO_D, &AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
+			cudaMemcpyToSymbol(AGENT_NO_TEMP_D, &AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
 			getLastCudaError("readConfig");
 		}
 		if(strcmp(p, "MAX_AGENT_NO")==0){
@@ -172,6 +173,10 @@ void readConfig(char *config_file){
 		if(strcmp(p, "HEAP_SIZE")==0){
 			p=strtok(NULL, "=");
 			HEAP_SIZE = atoi(p);
+		}
+		if(strcmp(p, "STACK_SIZE")==0){
+			p=strtok(NULL, "=");
+			STACK_SIZE = atoi(p);
 		}
 		if(strcmp(p, "DATA_FILENAME")==0){
 			dataFileName = new char[20];
@@ -272,6 +277,10 @@ __global__ void checkEverything(BoidModel *model){
 	}
 }
 
+__global__ void setAgentNoD(){
+	AGENT_NO_D = AGENT_NO_TEMP_D;
+}
+
 void oneStep(BoidModel *model, BoidModel *model_h){
 	int gSize = GRID_SIZE;
 	size_t sizeOfSmem = BLOCK_SIZE * (
@@ -280,8 +289,14 @@ void oneStep(BoidModel *model, BoidModel *model_h){
 		);
 	getLastCudaError("before loop");
 	c2dUtil::genNeighbor(model_h->world, model_h->worldH);
-	//checkEverything<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
+	getLastCudaError("end genNeighbor");
 	schUtil::step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
+	getLastCudaError("end step");
+	setAgentNoD<<<1, 1>>>();
+	getLastCudaError("end setAgentNoD");
+	cudaMemcpyFromSymbol(&AGENT_NO, AGENT_NO_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
+	getLastCudaError("end cudaMemcpyFromSymbol");
+	GRID_SIZE = AGENT_NO%BLOCK_SIZE==0 ? AGENT_NO/BLOCK_SIZE : AGENT_NO/BLOCK_SIZE + 1;
 	getLastCudaError("end loop");
 }
 
@@ -308,9 +323,17 @@ void mainWork(char *config_file){
 	//printf("size taken by one iterInfo: %d\n", sizeof(iterInfo));
 	//printf("size taken by one dataUnion: %d\n", sizeof(dataUnion));
 	size_t pVal;
+	cudaDeviceGetLimit(&pVal, cudaLimitMallocHeapSize);
+	printf("cudaLimitMallocHeapSize: %d\n", pVal);
 	cudaDeviceSetLimit(cudaLimitMallocHeapSize, HEAP_SIZE);
 	cudaDeviceGetLimit(&pVal, cudaLimitMallocHeapSize);
-	//printf("cudaLimitMallocHeapSize: %d\n", pVal);
+	printf("cudaLimitMallocHeapSize: %d\n", pVal);
+
+	cudaDeviceGetLimit(&pVal, cudaLimitStackSize);
+	printf("cudaLimitStackSize: %d\n", pVal);
+	cudaDeviceSetLimit(cudaLimitStackSize, STACK_SIZE);
+	cudaDeviceGetLimit(&pVal, cudaLimitStackSize);
+	printf("cudaLimitStackSize: %d\n", pVal);
 
 	addAgentsOnDevice<<<gSize, BLOCK_SIZE>>>(model, x_pos, y_pos);
 	//schUtil::scheduleRepeatingAllAgents<<<1, BLOCK_SIZE>>>(model);
@@ -319,7 +342,7 @@ void mainWork(char *config_file){
 
 	std::ifstream fin("randDebugOut2.txt");
 	float *devRandDebug;
-	cudaMalloc((void**)&devRandDebug, STRIP*gSize*BLOCK_SIZE*sizeof(float));
+	cudaMalloc((void**)&devRandDebug, STRIP*MAX_AGENT_NO*sizeof(float));
 	cudaMemcpyToSymbol(randDebug, &devRandDebug, sizeof(devRandDebug),
 		0, cudaMemcpyHostToDevice);
 #ifdef _WIN32

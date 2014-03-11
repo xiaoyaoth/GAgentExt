@@ -61,7 +61,6 @@ protected:
 	GAgentData_t *data;
 	GAgentData_t *dataCopy;
 	__device__ int initId();
-	__device__ int addId();
 public:
 	__device__ void allocOnDevice();
 	__device__ int getId() const;
@@ -159,17 +158,19 @@ public:
 	__device__ GScheduler* getScheduler() const;
 	__device__ void addToScheduler(GAgent *ag, int idx);
 	__device__ void foo();
+	__device__ int incAgentNo();
 	friend void schUtil::sortWithKey(GModel *model);
 };
 class GRandom {
-	curandState rState;
+	curandState *rState;
 public:
 	__device__ GRandom(int seed, int agId) {
-		curand_init(seed, agId, 0, &rState);
+		rState = new curandState();
+		curand_init(seed, agId, 0, rState);
 	}
 
 	__device__ float uniform(){
-		return curand_uniform(&this->rState);
+		return curand_uniform(this->rState);
 	}
 };
 
@@ -197,7 +198,7 @@ __device__ const int* Continuous2D::getNeighborIdx() const{
 	return this->neighborIdx;
 }
 __device__ bool Continuous2D::add(GAgent *ag, int idx) {
-	if(idx>=AGENT_NO_D)
+	if(idx>=MAX_AGENT_NO_D)
 		return false;
 	this->allAgents[idx]=ag;
 	return true;
@@ -357,7 +358,7 @@ __device__ void Continuous2D::putAgentDataIntoSharedMem(const iterInfo &info, da
 		GAgent *ag = this->obtainAgentByInfoPtr(agPtr);
 		elem->addValue(ag->getData());
 	} else
-		elem->id = -1;	
+		elem->id = -1;
 #ifdef BOID_DEBUG
 	if (agPtr < -1 || agPtr > AGENT_NO_D + 32){
 		printf("Continuous2D::putAgentDataIntoSharedMem: ptr is %d, info.ptr is %d, lane is %d\n", agPtr, info.ptr, lane);
@@ -449,9 +450,6 @@ __device__ GAgentData_t *Continuous2D::nextAgentData(iterInfo &info) const {
 __device__ int GAgent::initId() {
 	return threadIdx.x + blockIdx.x * blockDim.x;
 }
-__device__ int GAgent::addId(){
-	return atomicInc((unsigned int *)&AGENT_NO_D, MAX_AGENT_NO_D);
-}
 __device__ void GAgent::allocOnDevice(){
 	this->data->id = threadIdx.x + blockIdx.x * blockDim.x;
 }
@@ -517,7 +515,7 @@ __device__ GAgent* GScheduler::obtainAgentById(int idx) const {
 		return NULL;
 }
 __device__ bool GScheduler::add(GAgent *ag, int idx){
-	if(idx>=AGENT_NO_D)
+	if(idx>=MAX_AGENT_NO_D)
 		return false;
 	this->allAgents[idx] = ag;
 	return true;
@@ -548,6 +546,10 @@ __device__ GScheduler* GModel::getScheduler() const {
 }
 __device__ void GModel::addToScheduler(GAgent *ag, int idx){
 	this->scheduler->add(ag, idx);
+}
+
+__device__ int GModel::incAgentNo(){
+	return atomicInc((unsigned int *)&AGENT_NO_TEMP_D, MAX_AGENT_NO_D);
 }
 
 //namespace continuous2D Utility

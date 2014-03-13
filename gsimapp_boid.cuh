@@ -431,7 +431,7 @@ __device__ void PreyBoid::step(GModel *model){
 	dummyDataPtr->loc.x = world->stx(myLoc.x + dx);
 	dummyDataPtr->loc.y = world->sty(myLoc.y + dy);
 
-	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D) {
+	if (AGENT_NO_D + 1000 < MAX_AGENT_NO_D && this->getId() < 1000) {
 		int idNew = model->incAgentNo();
 		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
 		boidModel->getWorld()->add(preyNew, idNew);

@@ -207,12 +207,7 @@ __device__ void FoodBoid::increase(){
 	//}
 }
 __device__ void FoodBoid::step(GModel *model){
-	//if(this->dead) {
-	//	this->model->getWorld()->remove(this);
-	//	return;
-	//}
-	//if(this->model->rgen->nextFloat() > 0.3)
-	//	this->increase();
+
 }
 
 //PreyBoid
@@ -253,7 +248,6 @@ __device__ void PreyBoid::setRandomSpeed(){
 		//+ this->model->rgen->nextGaussian() * 0.2
 		;
 }
-
 __device__ float2d_t PreyBoid::randomness(GRandom *gen){
 	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
 	float x = randDebug[STRIP*idx];
@@ -431,7 +425,8 @@ __device__ void PreyBoid::step(GModel *model){
 	dummyDataPtr->loc.x = world->stx(myLoc.x + dx);
 	dummyDataPtr->loc.y = world->sty(myLoc.y + dy);
 
-	if (AGENT_NO_D + 1000 < MAX_AGENT_NO_D && this->getId() < 1000) {
+	float dice = this->random->uniform();
+	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D && dice < 0.2) {
 		int idNew = model->incAgentNo();
 		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
 		boidModel->addToWorld(preyNew, idNew);
@@ -440,6 +435,7 @@ __device__ void PreyBoid::step(GModel *model){
 
 	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
 	randDebug[STRIP*this->data->id+1] = dummyDataPtr->loc.y;
+	
 }
 __device__ void PreyBoid::step1(GModel *model){
 	const BoidModel *boidModel = (BoidModel*) model;

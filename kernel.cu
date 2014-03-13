@@ -58,34 +58,6 @@ __global__ void addAgentsOnDevice(BoidModel *gm, float *x_pos, float *y_pos){
 		gm->getScheduler()->setAssignments(gm->getWorld()->getNeighborIdx());
 }
 
-void test1(){
-	int gSize = GRID_SIZE;
-	printf("sizeof(GModel*): %d\n", sizeof(GModel*));
-	printf("sizeof(void*):   %d\n", sizeof(void*));
-
-	BoidModel *model_h = new BoidModel();
-	model_h->allocOnDevice();
-	BoidModel *model;
-	cudaMalloc((void**)&model, sizeof(BoidModel));
-	cudaMemcpy(model, model_h, sizeof(BoidModel), cudaMemcpyHostToDevice);
-	delete model_h;
-
-	float *x_pos, *y_pos;
-	size_t floatDataSize = AGENT_NO*sizeof(float);
-	cudaMalloc((void**)&x_pos, floatDataSize);
-	cudaMalloc((void**)&y_pos, floatDataSize);
-	initOnDevice(x_pos, y_pos);
-	addAgentsOnDevice<<<gSize, BLOCK_SIZE>>>(model, x_pos, y_pos);
-	seeAllAgents<<<gSize, BLOCK_SIZE>>>(model);
-
-	schUtil::scheduleRepeatingAllAgents<<<gSize, BLOCK_SIZE>>>(model);
-	int steps;
-	std::cout<<"steps: ";
-	std::cin>>steps;
-	for (int i = 0; i < steps; i++)
-		schUtil::step<<<gSize, BLOCK_SIZE>>>(model);
-}
-
 void readConfig(char *config_file){
 	std::ifstream fin;
 	fin.open(config_file);
@@ -290,7 +262,7 @@ void oneStep(BoidModel *model, BoidModel *model_h){
 	getLastCudaError("before loop");
 	c2dUtil::genNeighbor(model_h->world, model_h->worldH);
 	getLastCudaError("end genNeighbor");
-	schUtil::step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
+	step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
 	getLastCudaError("end step");
 	setAgentNoD<<<1, 1>>>();
 	getLastCudaError("end setAgentNoD");
@@ -354,6 +326,7 @@ void mainWork(char *config_file){
 		GSimVisual::getInstance().animate();
 		writeRandDebug(i, devRandDebug);
 	}
+	printf("finally total agent is %d\n", AGENT_NO);
 	GSimVisual::getInstance().stop();
 #else
 	for (int i=0; i<STEPS; i++){

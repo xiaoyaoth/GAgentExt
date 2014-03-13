@@ -12,7 +12,6 @@
 //class delaration
 class GSteppalbe;
 class GAgent;
-class GIterativeAgent;
 class Continuous2D;
 class GScheduler;
 class GModel;
@@ -42,12 +41,6 @@ namespace c2dUtil{
 	void queryNeighbor(Continuous2D *c2d);
 	void genNeighbor(Continuous2D *world, Continuous2D *world_h);
 };
-namespace schUtil{
-	void sortWithKey(GModel *model);
-	__global__ void scheduleRepeatingAllAgents(GModel *gm);
-	__global__ void step(GModel *gm);
-
-}
 
 class GSteppable{
 public:
@@ -68,20 +61,6 @@ public:
 	__device__ float2d_t getLoc() const;
 	__device__ void swapDataAndCopy();
 	__device__ virtual void step(GModel *model) = 0;
-};
-class GIterativeAgent : public GAgent{
-private:
-	GAgent *realAg;
-	float interval;
-public:
-	__device__ GIterativeAgent(float time, int rank, 
-		GAgent *ag, float interval){
-			this->realAg = ag;
-			this->time = time;
-			this->rank = rank;
-			this->interval = interval;
-	}
-	__device__ void step(GModel *model);
 };
 class Continuous2D{
 public:
@@ -146,11 +125,10 @@ public:
 	__device__ bool add(GAgent* ag, int idx);
 	void allocOnHost();
 	void allocOnDevice();
-	friend void schUtil::sortWithKey(GModel *model);
 	//friend class GModel;
 };
 class GModel{
-protected:
+public:
 	GScheduler *scheduler, *schedulerH;
 public:
 	void allocOnHost();
@@ -159,13 +137,13 @@ public:
 	__device__ void addToScheduler(GAgent *ag, int idx);
 	__device__ void foo();
 	__device__ int incAgentNo();
-	friend void schUtil::sortWithKey(GModel *model);
 };
 class GRandom {
 	curandState *rState;
 public:
 	__device__ GRandom(int seed, int agId) {
-		rState = NULL;
+		rState = new curandState();
+		curand_init(seed, agId, 0, this->rState);
 	}
 
 	__device__ float uniform(){
@@ -282,13 +260,13 @@ __device__ dataUnion* Continuous2D::nextNeighborInit2(int agId, float2d_t agLoc,
 	info.id = agId;
 
 	if ((agLoc.x-range)>BOARDER_L_D)	info.cellUL.x = (int)((agLoc.x-range)/CLEN_X);
-								else	info.cellUL.x = (int)BOARDER_L_D/CLEN_X;
+	else	info.cellUL.x = (int)BOARDER_L_D/CLEN_X;
 	if ((agLoc.x+range)<BOARDER_R_D)	info.cellDR.x = (int)((agLoc.x+range)/CLEN_X);
-								else	info.cellDR.x = (int)BOARDER_R_D/CLEN_X - 1;
+	else	info.cellDR.x = (int)BOARDER_R_D/CLEN_X - 1;
 	if ((agLoc.y-range)>BOARDER_U_D)	info.cellUL.y = (int)((agLoc.y-range)/CLEN_Y);
-								else	info.cellUL.y = (int)BOARDER_U_D/CLEN_Y;
+	else	info.cellUL.y = (int)BOARDER_U_D/CLEN_Y;
 	if ((agLoc.y+range)<BOARDER_D_D)	info.cellDR.y = (int)((agLoc.y+range)/CLEN_Y);
-								else	info.cellDR.y = (int)BOARDER_D_D/CLEN_Y - 1;
+	else	info.cellDR.y = (int)BOARDER_D_D/CLEN_Y - 1;
 
 	int *cellulx = (int*)smem;
 	int *celluly = (int*)&(cellulx[blockDim.x]);
@@ -413,7 +391,6 @@ __device__ dataUnion *Continuous2D::nextAgentDataIntoSharedMem(iterInfo &info) c
 	return elem;
 }
 __device__ GAgentData_t *Continuous2D::nextAgentData(iterInfo &info) const {
-	const int tid = threadIdx.x;
 
 	if (info.ptr>info.boarder) {
 		info.ptrInSmem = 0;
@@ -465,32 +442,19 @@ __device__ void GAgent::swapDataAndCopy() {
 	this->dataCopy = temp;
 }
 
-//GIterativeAgent
-__device__ void GIterativeAgent::step(GModel *model){
-	this->time += this->interval;
-	this->realAg->step(model);
-	model->getScheduler()->ScheduleOnce(this->time, this->rank, this);
-}
-
 //GScheduler
-__device__ bool GScheduler::ScheduleOnce(const float time, 	const int rank, 
-	GAgent *ag){
-		const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-		if (idx < AGENT_NO_D){
-			ag->time = time;
-			ag->rank = rank;
-			allAgents[idx] = ag;
-		}
-		return true;
+__device__ bool GScheduler::ScheduleOnce(const float time, 	const int rank, GAgent *ag){
+	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx < AGENT_NO_D){
+		ag->time = time;
+		ag->rank = rank;
+		allAgents[idx] = ag;
+	}
+	return true;
 }
-__device__ bool GScheduler::scheduleRepeating(const float time, const int rank, 
-	GAgent *ag, const float interval){
-		const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-		if (idx < AGENT_NO_D){
-			GIterativeAgent *iterAg = new GIterativeAgent(time, rank, ag, interval);
-			allAgents[idx] = iterAg;
-		}
-		return true;
+__device__ bool GScheduler::scheduleRepeating(const float time, const int rank, GAgent *ag, const float interval){
+
+	return true;
 }
 __device__ void GScheduler::setAssignments(const int* newAs){
 	this->assignments = newAs;
@@ -663,32 +627,17 @@ struct SchdulerComp : public thrust::binary_function<GAgent, GAgent, bool> {
 			return a->rank < b->rank;
 	}
 };
-void schUtil::sortWithKey(GModel *model){
-	//it is the Scheduler in GModel that we are interested
-	GModel *model_h = new GModel();
-	GScheduler *sch_h = new GScheduler();
-	cudaMemcpy(model_h, model, sizeof(GModel), cudaMemcpyDeviceToHost);
-	cudaMemcpy(sch_h, model_h->scheduler, sizeof(GScheduler), cudaMemcpyDeviceToHost);
-	thrust::device_ptr<GAgent*> ptr(sch_h->allAgents);
-	thrust::sort(ptr, ptr+AGENT_NO, SchdulerComp());
-}
-__global__ void schUtil::scheduleRepeatingAllAgents(GModel *gm){
+
+__global__ void step(GModel *gm){
 	GScheduler *sch = gm->getScheduler();
 	GAgent *ag = sch->obtainAgentPerThread();
-	if (ag != NULL){
-		sch->scheduleRepeating(0,0,ag,1);
+	if (ag != NULL) {
+		ag->step(gm);
+		ag->swapDataAndCopy();
 	}
-}
-__global__ void schUtil::step(GModel *gm){
-	GScheduler *sch = gm->getScheduler();
-	GAgent *ag = sch->obtainAgentPerThread();
-	//if (ag != NULL) {
-	//	ag->step(gm);
-	//	ag->swapDataAndCopy();
-	//}
 }
 
 namespace gsim{
-	
+
 };
 #endif

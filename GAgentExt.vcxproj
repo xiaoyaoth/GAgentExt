@@ -158,7 +158,6 @@ copy "$(CudaToolkitBinDir)\cudart*.dll" "$(OutDir)"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="kernel.cu" />
-    <CudaCompile Include="test2.cu" />
   </ItemGroup>
   <ItemGroup>
     <None Include="gsimapp_boid.cuh" />

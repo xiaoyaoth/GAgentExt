@@ -165,8 +165,7 @@ class GRandom {
 	curandState *rState;
 public:
 	__device__ GRandom(int seed, int agId) {
-		rState = new curandState();
-		curand_init(seed, agId, 0, rState);
+		rState = NULL;
 	}
 
 	__device__ float uniform(){
@@ -273,7 +272,6 @@ __device__ float Continuous2D::tds(const float2d_t loc1, const float2d_t loc2) c
 __device__ dataUnion* Continuous2D::nextNeighborInit2(int agId, float2d_t agLoc, float range, iterInfo &info) const {
 	const unsigned int tid = threadIdx.x;
 	const unsigned int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	const unsigned int wid = tid >> 32;
 
 	info.myLoc = agLoc;
 	info.ptr = -1;
@@ -416,7 +414,6 @@ __device__ dataUnion *Continuous2D::nextAgentDataIntoSharedMem(iterInfo &info) c
 }
 __device__ GAgentData_t *Continuous2D::nextAgentData(iterInfo &info) const {
 	const int tid = threadIdx.x;
-	const int lane = tid & 31;
 
 	if (info.ptr>info.boarder) {
 		info.ptrInSmem = 0;
@@ -685,10 +682,10 @@ __global__ void schUtil::scheduleRepeatingAllAgents(GModel *gm){
 __global__ void schUtil::step(GModel *gm){
 	GScheduler *sch = gm->getScheduler();
 	GAgent *ag = sch->obtainAgentPerThread();
-	if (ag != NULL) {
-		ag->step(gm);
-		ag->swapDataAndCopy();
-	}
+	//if (ag != NULL) {
+	//	ag->step(gm);
+	//	ag->swapDataAndCopy();
+	//}
 }
 
 namespace gsim{

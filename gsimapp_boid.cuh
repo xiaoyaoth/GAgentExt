@@ -37,7 +37,7 @@ public:
 class BaseBoid : public GAgent {
 public:
 	BoidModel *model;
-	//GRandom *random;
+	GRandom *random;
 	__device__ float getOrientation2D();
 	__device__ void  setOrientation2D(float val);
 	__device__ float2d_t momentum();
@@ -77,7 +77,7 @@ public:
 		this->time = 0;
 		this->rank = 0;
 
-		//this->random = new GRandom(2345, id);
+		this->random = new GRandom(2345, id);
 	}
 	__device__ PreyBoid(){
 		int id = this->initId();
@@ -267,8 +267,8 @@ __device__ float2d_t PreyBoid::randomness(GRandom *gen){
 
 #define TRIAL_NEXT_AGENT_DATA 0
 __device__ float2d_t PreyBoid::consistency(const Continuous2D *world, iterInfo &info){
-	float x=0, y=0, dx=0, dy=0;
-	float sqrDist, ds;
+	float x=0, y=0;
+	float ds;
 	float2d_t m;
 	world->resetNeighborInit(info);
 	//world->nextNeighborInit2(this->data->id, this->data->loc, RANGE, info);
@@ -434,8 +434,8 @@ __device__ void PreyBoid::step(GModel *model){
 	if (AGENT_NO_D + 1000 < MAX_AGENT_NO_D && this->getId() < 1000) {
 		int idNew = model->incAgentNo();
 		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
-		boidModel->getWorld()->add(preyNew, idNew);
-		boidModel->getScheduler()->add(preyNew, idNew);
+		boidModel->addToWorld(preyNew, idNew);
+		boidModel->addToScheduler(preyNew, idNew);
 	}
 
 	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
@@ -448,8 +448,6 @@ __device__ void PreyBoid::step1(GModel *model){
 	iterInfo info; 
 	float x=0, y=0, dx=0, dy=0;
 	float sqrDist, ds;
-	int ptrInSmem = 0;
-
 
 	world->nextNeighborInit2(this->data->id, this->data->loc, RANGE, info);
 	dataUnion *elem = NULL;

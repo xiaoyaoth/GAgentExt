@@ -68,6 +68,7 @@ public:
 	__device__ void remove();
 	__device__ void swapDataAndCopy();
 	__device__ virtual void step(GModel *model) = 0;
+	__device__ virtual ~GAgent() {}
 };
 class Continuous2D{
 public:
@@ -651,12 +652,11 @@ __global__ void util::setAlistNull(GScheduler *sch, Continuous2D *world){
 		GAgent *ag1 = world->allAgents[idx];
 		if (ag1->getDelMark() == true) {
 			world->allAgents[idx] = NULL;
-			//delete ag1;
 		}
 		GAgent *ag2 = sch->allAgents[idx];
 		if (ag2->getDelMark() == true) {
 			sch->allAgents[idx] = NULL;
-			//delete ag1;
+			delete ag2;
 		}
 	}
 }
@@ -671,20 +671,11 @@ void util::sortAList(GScheduler *sch_h, Continuous2D *world_h) {
 	//cudaMemcpy(sch_h->allAgents, world_h->allAgents, AGENT_NO * sizeof(GAgent*), cudaMemcpyDeviceToDevice);
 
 	alist = sch_h->allAgents;
-	//GAgent **alist_h = (GAgent **)malloc(AGENT_NO * sizeof(GAgent *));
-	//cudaMemcpy(alist_h, alist, AGENT_NO * sizeof(GAgent *), cudaMemcpyDeviceToHost);
-	//for (int i = 0; i < AGENT_NO; i++)
-	//	printf("%p \t", alist_h[i]);
-	//printf("end\n");
 	thrust::device_ptr<GAgent *> alist_ptr2(alist);
 	typedef thrust::device_vector<GAgent *>::iterator Iter;
 	Iter key_begin2(alist_ptr2);
 	Iter key_end2(alist_ptr2 + AGENT_NO);
 	thrust::sort(key_begin2, key_end2, AlistComp());
-	//cudaMemcpy(alist_h, alist, AGENT_NO * sizeof(GAgent *), cudaMemcpyDeviceToHost);
-	//for (int i = 0; i < AGENT_NO; i++)
-	//	printf("%p \t", alist_h[i]);
-	//printf("end\n");
 
 	getLastCudaError("sortAList");
 }

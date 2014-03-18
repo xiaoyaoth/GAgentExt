@@ -42,6 +42,8 @@ public:
 	__device__ void  setOrientation2D(float val);
 	__device__ float2d_t momentum();
 	__device__ virtual void step(GModel* model) = 0;
+	__device__ virtual ~BaseBoid() {
+	}
 };
 class FoodBoid : public BaseBoid{
 	float scale;
@@ -90,6 +92,10 @@ public:
 	}
 	__device__ PreyBoid(int id, float x, float y, BoidModel *model){
 		init(id, x, y, model);
+	}
+	__device__ ~PreyBoid(){
+		delete this->data;
+		delete this->dataCopy;
 	}
 	__device__ bool hungry();
 	__device__ void eat(FoodBoid *food);
@@ -426,9 +432,11 @@ __device__ void PreyBoid::step(GModel *model){
 	dummyDataPtr->loc.y = world->sty(myLoc.y + dy);
 
 	float dice = this->random->uniform();
-	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D && dice < 0.2) {
+	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D && dice < 0.1) {
+		float d1 = this->random->uniform();
+		float d2 = this->random->uniform();
 		int idNew = AGENT_NO_D + model->incAgentNo();
-		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
+		PreyBoid *preyNew = new PreyBoid(idNew, d1 * 1000, d2 * 1000, boidModel);
 		boidModel->addToWorld(preyNew, idNew);
 		boidModel->addToScheduler(preyNew, idNew);
 	}

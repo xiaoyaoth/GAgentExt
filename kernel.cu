@@ -54,8 +54,11 @@ __global__ void addAgentsOnDevice(BoidModel *gm, float *x_pos, float *y_pos){
 		gm->addToScheduler(ag, idx);
 		gm->addToWorld(ag, idx);
 	}
-	if (idx == 0)
+	if (idx == 0) {
 		gm->getScheduler()->setAssignments(gm->getWorld()->getNeighborIdx());
+		AGENT_NO_INC_D = 0;
+		AGENT_NO_DEC_D = 0;
+	}
 }
 
 void readConfig(char *config_file){
@@ -75,7 +78,6 @@ void readConfig(char *config_file){
 			p=strtok(NULL, "=");
 			AGENT_NO = atoi(p);
 			cudaMemcpyToSymbol(AGENT_NO_D, &AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
-			cudaMemcpyToSymbol(AGENT_NO_TEMP_D, &AGENT_NO, sizeof(int), 0, cudaMemcpyHostToDevice);
 			getLastCudaError("readConfig");
 		}
 		if(strcmp(p, "MAX_AGENT_NO")==0){
@@ -175,7 +177,6 @@ void readConfig(char *config_file){
 	getLastCudaError("readConfig");
 
 	GRID_SIZE = AGENT_NO%BLOCK_SIZE==0 ? AGENT_NO/BLOCK_SIZE : AGENT_NO/BLOCK_SIZE + 1;
-
 }
 
 void readRandDebug(float *devRandDebug, std::string str1, std::string str2){
@@ -237,37 +238,38 @@ void writeRandDebug(int i, float* devRandDebug){
 	}
 }
 
-__global__ void checkEverything(BoidModel *model){
-	//const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	Continuous2D *world = model->getWorld();
-	GScheduler * sch = model->getScheduler();
-	const int *localNeiIdx = world->getNeighborIdx();
-	for (int i=0; i<AGENT_NO_D; i++) {
-		int agIdx = localNeiIdx[i];
-		GAgent *ag = sch->obtainAgentById(agIdx);
-		ag->getData()->id = agIdx;
-	}
-}
-
 __global__ void setAgentNoD(){
-	AGENT_NO_D = AGENT_NO_TEMP_D;
+	AGENT_NO_D = AGENT_NO_D + AGENT_NO_INC_D - AGENT_NO_DEC_D;
+	AGENT_NO_INC_D = 0;
+	AGENT_NO_DEC_D = 0;
 }
 
 void oneStep(BoidModel *model, BoidModel *model_h){
 	int gSize = GRID_SIZE;
+	unsigned int AGENT_NO_INC = 0, AGENT_NO_DEC = 0;
 	size_t sizeOfSmem = BLOCK_SIZE * (
 		4*sizeof(int)
 		+ sizeof(dataUnion)
 		);
 	getLastCudaError("before loop");
-	c2dUtil::genNeighbor(model_h->world, model_h->worldH);
+	util::genNeighbor(model_h->world, model_h->worldH);
 	getLastCudaError("end genNeighbor");
 	step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
-	getLastCudaError("end step");
-	setAgentNoD<<<1, 1>>>();
-	getLastCudaError("end setAgentNoD");
-	cudaMemcpyFromSymbol(&AGENT_NO, AGENT_NO_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
+	getLastCudaError("end step");	
+	util::setAlistNull<<<gSize, BLOCK_SIZE>>>(model_h->scheduler, model_h->world);
+
+	cudaMemcpyFromSymbol(&AGENT_NO_INC, AGENT_NO_INC_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
+	cudaMemcpyFromSymbol(&AGENT_NO_DEC, AGENT_NO_DEC_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
 	getLastCudaError("end cudaMemcpyFromSymbol");
+
+	AGENT_NO += AGENT_NO_INC;
+	util::sortAList(model_h->schedulerH, model_h->worldH);
+	//util::sortAList(model_h->schedulerH);
+	//getLastCudaError("end clean up Continuous2D");
+
+	setAgentNoD<<<1, 1>>>();
+	AGENT_NO -= AGENT_NO_DEC;
+	getLastCudaError("end setAgentNoD");
 	GRID_SIZE = AGENT_NO%BLOCK_SIZE==0 ? AGENT_NO/BLOCK_SIZE : AGENT_NO/BLOCK_SIZE + 1;
 	getLastCudaError("end loop");
 }

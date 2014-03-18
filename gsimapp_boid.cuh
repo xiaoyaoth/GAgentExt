@@ -73,6 +73,7 @@ public:
 		
 		this->data = myData;
 		this->dataCopy = myDataCopy;
+		this->delMark = false;
 		this->model = model;
 		this->time = 0;
 		this->rank = 0;
@@ -388,7 +389,6 @@ __device__ float2d_t PreyBoid::avoidance(const Continuous2D *world, iterInfo &in
 	res.y = 400*y;
 	return res;
 }
-
 __device__ void PreyBoid::step(GModel *model){
 	__syncthreads(); //这个barrier可以放到刚进step，但是不能放到getLoc()之后， 不然sync会出错
 	BoidModel *boidModel = (BoidModel*) model;
@@ -427,43 +427,19 @@ __device__ void PreyBoid::step(GModel *model){
 
 	float dice = this->random->uniform();
 	if (AGENT_NO_D * 2 < MAX_AGENT_NO_D && dice < 0.2) {
-		int idNew = model->incAgentNo();
+		int idNew = AGENT_NO_D + model->incAgentNo();
 		PreyBoid *preyNew = new PreyBoid(idNew, myLoc.x, myLoc.y, boidModel);
 		boidModel->addToWorld(preyNew, idNew);
 		boidModel->addToScheduler(preyNew, idNew);
+	}
+	if (dice > 0.95) {
+		// mark agents to be deleted
+		this->remove();
 	}
 
 	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
 	randDebug[STRIP*this->data->id+1] = dummyDataPtr->loc.y;
 	
-}
-__device__ void PreyBoid::step1(GModel *model){
-	const BoidModel *boidModel = (BoidModel*) model;
-	const Continuous2D *world = boidModel->getWorld();
-
-	iterInfo info; 
-	float x=0, y=0, dx=0, dy=0;
-	float sqrDist, ds;
-
-	world->nextNeighborInit2(this->data->id, this->data->loc, RANGE, info);
-	dataUnion *elem = NULL;
-	while(elem != NULL){
-		PreyBoidData_t otherData;
-		otherData.dead = elem->dead;
-		otherData.loc = elem->loc;
-		ds = world->tds(info.myLoc, otherData.loc);
-		if (ds < RANGE) {
-			if (!otherData.dead){
-				info.count++;
-				dx = world->tdx(info.myLoc.x, otherData.loc.x);
-				dy = world->tdy(info.myLoc.y, otherData.loc.y);
-				sqrDist = dx*dx + dy*dy;
-				x += dx/(sqrDist*sqrDist + 1);
-				y += dy/(sqrDist*sqrDist + 1);
-			}
-		}
-		elem = world->nextAgentDataIntoSharedMem(info);
-	}
 }
 
 //PredatorBoid

@@ -10,8 +10,9 @@
 #include "float.h"
 
 __constant__ int MAX_AGENT_NO_D;//copied from host
-__device__ int AGENT_NO_D;	//copied from host
-__device__ int AGENT_NO_TEMP_D; //init iteratively on device
+__device__ unsigned int AGENT_NO_D;		//copied from host
+__device__ unsigned int AGENT_NO_INC_D;	//manipulated on device
+__device__ unsigned int AGENT_NO_DEC_D;	//manipulated on device
 __constant__ int CELL_NO_D;		//copied from host
 __constant__ int BOARDER_L_D;	//copied from host
 __constant__ int BOARDER_R_D;	//copied from host

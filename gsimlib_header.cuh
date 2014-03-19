@@ -86,8 +86,8 @@ typedef struct float_2d
 	}
 } float2d_t;
 typedef struct GAgentData{
-	int id;
 	float2d_t loc;
+	__device__ virtual ~GAgentData(){}
 } GAgentData_t;
 
 namespace SCHEDULE_CONSTANT{

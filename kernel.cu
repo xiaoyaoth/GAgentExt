@@ -303,12 +303,6 @@ void mainWork(char *config_file){
 	cudaDeviceGetLimit(&pVal, cudaLimitMallocHeapSize);
 	printf("cudaLimitMallocHeapSize: %d\n", pVal);
 
-	cudaDeviceGetLimit(&pVal, cudaLimitStackSize);
-	printf("cudaLimitStackSize: %d\n", pVal);
-	cudaDeviceSetLimit(cudaLimitStackSize, STACK_SIZE);
-	cudaDeviceGetLimit(&pVal, cudaLimitStackSize);
-	printf("cudaLimitStackSize: %d\n", pVal);
-
 	addAgentsOnDevice<<<gSize, BLOCK_SIZE>>>(model, x_pos, y_pos);
 	//schUtil::scheduleRepeatingAllAgents<<<1, BLOCK_SIZE>>>(model);
 	getLastCudaError("before going into the big loop");

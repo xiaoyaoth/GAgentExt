@@ -56,6 +56,7 @@ public:
 class GAgent : public GSteppable{	
 protected:
 	bool delMark;
+	int id;
 	GAgentData_t *data;
 	GAgentData_t *dataCopy;
 	__device__ int initId();
@@ -349,7 +350,7 @@ __device__ void Continuous2D::putAgentDataIntoSharedMem(const iterInfo &info, da
 		GAgent *ag = this->obtainAgentByInfoPtr(agPtr);
 		elem->addValue(ag->getData());
 	} else
-		elem->id = -1;
+		elem->loc.x = -1;
 #ifdef BOID_DEBUG
 	if (agPtr < -1 || agPtr > AGENT_NO_D + 32){
 		printf("Continuous2D::putAgentDataIntoSharedMem: ptr is %d, info.ptr is %d, lane is %d\n", agPtr, info.ptr, lane);
@@ -384,7 +385,7 @@ __device__ dataUnion *Continuous2D::nextAgentDataIntoSharedMem(iterInfo &info) c
 	info.ptrInSmem++;
 	info.ptr++;
 
-	while (elem->id == -1 && info.cellCur.y <= info.cellDR.y) {
+	while (elem->loc.x == -1 && info.cellCur.y <= info.cellDR.y) {
 		info.ptrInSmem = 0;
 		info.cellCur.x++;
 		if(info.cellCur.x>info.cellDR.x){
@@ -400,7 +401,7 @@ __device__ dataUnion *Continuous2D::nextAgentDataIntoSharedMem(iterInfo &info) c
 		info.ptr++;
 	}
 
-	if (elem->id == -1) {
+	if (elem->loc.x == -1) {
 		elem = NULL;
 	}
 	return elem;
@@ -440,7 +441,7 @@ __device__ int GAgent::initId() {
 	return threadIdx.x + blockIdx.x * blockDim.x;
 }
 __device__ void GAgent::allocOnDevice(){
-	this->data->id = threadIdx.x + blockIdx.x * blockDim.x;
+	this->id = threadIdx.x + blockIdx.x * blockDim.x;
 }
 __device__ GAgentData_t *GAgent::getData(){
 	return this->data;
@@ -449,7 +450,7 @@ __device__ float2d_t GAgent::getLoc() const{
 	return this->data->loc;
 }
 __device__ int	GAgent::getId() const {
-	return this->data->id;
+	return this->id;
 }
 __device__ bool GAgent::getDelMark() const {
 	return this->delMark;
@@ -652,11 +653,13 @@ __global__ void util::setAlistNull(GScheduler *sch, Continuous2D *world){
 		GAgent *ag1 = world->allAgents[idx];
 		if (ag1->getDelMark() == true) {
 			world->allAgents[idx] = NULL;
+			ag1 = NULL;
 		}
 		GAgent *ag2 = sch->allAgents[idx];
 		if (ag2->getDelMark() == true) {
 			sch->allAgents[idx] = NULL;
 			delete ag2;
+			ag2 = NULL;
 		}
 	}
 }

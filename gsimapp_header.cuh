@@ -15,6 +15,7 @@ typedef struct BaseBoidData : public GAgentData_t{
 	__device__ float2d_t momentum(){
 		return this->lastd;
 	}
+	__device__ virtual ~BaseBoidData(){}
 } BaseBoidData_t;
 
 typedef struct PreyBoidData : public BaseBoidData_t {
@@ -27,6 +28,7 @@ typedef struct PreyBoidData : public BaseBoidData_t {
 	float SENSE_FOOD_RANGE;
 	int HUNGER_LIMIT;
 	int STARVE_LIMIT;
+	__device__ ~PreyBoidData(){}
 } PreyBoidData_t;
 
 typedef struct FoodBoidData : public BaseBoidData_t{
@@ -38,7 +40,6 @@ typedef struct dataUnionStruct : public GAgentData_t {
 	BoidType btype;
 	BoidState bstate;
 	__device__ void addValue(GAgentData_t *data){
-		id = data->id;
 		loc = data->loc;
 		BaseBoidData_t *boidData = (BaseBoidData_t*)data;
 		BoidType bt = boidData->btype;

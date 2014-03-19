@@ -63,7 +63,6 @@ public:
 		myData->HUNGER_LIMIT = CONSTANT::PREY_HUNGER_LIMIT;
 		myData->STARVE_LIMIT = CONSTANT::PREY_STARVE_LIMIT;
 		myData->DEFAULT_SPEED = 0.7;
-		myData->id = id;
 		myData->loc.x = x;
 		myData->loc.y = y;
 		myData->lastd.x = 0;
@@ -79,6 +78,7 @@ public:
 		this->model = model;
 		this->time = 0;
 		this->rank = 0;
+		this->id = id;
 
 		this->random = new GRandom(2345, id);
 	}
@@ -96,6 +96,8 @@ public:
 	__device__ ~PreyBoid(){
 		delete this->data;
 		delete this->dataCopy;
+		this->data = NULL;
+		this->dataCopy = NULL;
 	}
 	__device__ bool hungry();
 	__device__ void eat(FoodBoid *food);
@@ -302,7 +304,7 @@ __device__ float2d_t PreyBoid::consistency(const Continuous2D *world, iterInfo &
 		x /= info.count;
 		y /= info.count;
 	}
-	int id = this->data->id;
+	int id = this->id;
 	randDebug[STRIP*id+4] = info.count;
 	float2d_t res;
 	res.x = x;
@@ -343,7 +345,7 @@ __device__ float2d_t PreyBoid::cohesion(const Continuous2D *world, iterInfo &inf
 		y /= info.count;
 	}
 
-	int id = this->data->id;
+	int id = this->id;
 	randDebug[STRIP*id+3] = info.count;
 
 	float2d_t res;
@@ -354,7 +356,7 @@ __device__ float2d_t PreyBoid::cohesion(const Continuous2D *world, iterInfo &inf
 __device__ float2d_t PreyBoid::avoidance(const Continuous2D *world, iterInfo &info){
 	float x=0, y=0, dx=0, dy=0;
 	float sqrDist, ds;
-	world->nextNeighborInit2(this->data->id, this->data->loc, RANGE, info);
+	world->nextNeighborInit2(this->id, this->data->loc, RANGE, info);
 #if TRIAL_NEXT_AGENT_DATA == 0
 	dataUnion otherData;
 	dataUnion *elem = world->nextAgentDataIntoSharedMem(info);
@@ -387,7 +389,7 @@ __device__ float2d_t PreyBoid::avoidance(const Continuous2D *world, iterInfo &in
 		y /= info.count;
 	}
 
-	int id = this->data->id;
+	int id = this->id;
 	randDebug[STRIP*id+2] = info.count;
 
 	float2d_t res;
@@ -445,8 +447,8 @@ __device__ void PreyBoid::step(GModel *model){
 		this->remove();
 	}
 
-	randDebug[STRIP*this->data->id] = dummyDataPtr->loc.x;
-	randDebug[STRIP*this->data->id+1] = dummyDataPtr->loc.y;
+	randDebug[STRIP*this->id] = dummyDataPtr->loc.x;
+	randDebug[STRIP*this->id+1] = dummyDataPtr->loc.y;
 	
 }
 

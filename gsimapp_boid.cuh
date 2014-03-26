@@ -10,6 +10,8 @@
 class BoidModel : public GModel{
 public:
 	Continuous2D *world, *worldH;
+	PreyBoidData_t *preyDataArray;
+	PreyBoidData_t *preyDataArrayCopy;
 
 	float cohesion;
 	float avoidance;
@@ -58,8 +60,8 @@ public:
 class PreyBoid : public BaseBoid{
 public:
 	__device__ void init(int id, float x, float y, BoidModel *model){
-		PreyBoidData_t *myData = new PreyBoidData_t();
-		PreyBoidData_t *myDataCopy = new PreyBoidData_t();
+		PreyBoidData_t *myData = &model->preyDataArray[id];
+		PreyBoidData_t *myDataCopy = &model->preyDataArrayCopy[id];
 		myData->HUNGER_LIMIT = CONSTANT::PREY_HUNGER_LIMIT;
 		myData->STARVE_LIMIT = CONSTANT::PREY_STARVE_LIMIT;
 		myData->DEFAULT_SPEED = 0.7;
@@ -152,16 +154,9 @@ void BoidModel::allocOnDevice(){
 	worldH->allocOnDevice();
 	cudaMalloc((void**)&world, sizeof(Continuous2D));
 	cudaMemcpy(world, worldH, sizeof(Continuous2D), cudaMemcpyHostToDevice);
-	//cudaMalloc((void**)&preyBoidDataArray, 2*AGENT_NO*sizeof(PreyBoidData_t));
-	//cudaMemcpyToSymbol(this->schedulerH->assignments, &this->worldH->neighborIdx,
-		//sizeof(int), 0, cudaMemcpyDeviceToDevice);
-	//init GRandomGen
-	//rgenH = new GRandomGen();
-	//rgenH->allocOnDevice();
-	//cudaMalloc((void**)&rgen, sizeof(GRandomGen));
-	//cudaMemcpy(rgen, rgenH, sizeof(GRandomGen), cudaMemcpyHostToDevice);
-	//int gSize = GRID_SIZE;
-	//rgenUtil::initStates<<<gSize, BLOCK_SIZE>>>(rgen, 1234);
+	//init data
+	cudaMalloc((void**)&preyDataArray, MAX_AGENT_NO*sizeof(PreyBoidData_t));
+	cudaMalloc((void**)&preyDataArrayCopy, MAX_AGENT_NO*sizeof(PreyBoidData_t));
 	getLastCudaError("BoidModel()");
 }
 void BoidModel::allocOnHost(){

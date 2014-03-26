@@ -7,6 +7,9 @@
 #include <iostream>
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <thrust/sort.h>
+#include <thrust/device_vector.h>
+#include <thrust/device_ptr.h>
 #include "float.h"
 
 __constant__ int MAX_AGENT_NO_D;//copied from host
@@ -124,4 +127,104 @@ inline void __getLastCudaError( const char *errorMessage, const char *file, cons
 
 __device__ float *randDebug;
 
+template<class Obj> class Pool;
+
+namespace poolUtil{
+	template<class Obj> __global__ void initPool(Pool<Obj> *pDev);
+	template<class Obj> __global__ void cleanupDevice(Pool<Obj> *pDev);
+	template<class Obj> void cleanup(Pool<Obj> *pHost, Pool<Obj> *pDev);
+};
+template<class Obj> class Pool 
+{
+public:
+	/* pointer array, elements are pointers points to elements in data array
+	Since pointers are light weighted, it will be manipulated in sorting, etc. */
+	int *idxArray;
+
+	/* keeping the actual Objects data */
+	Obj *dataArray;
+
+	/* objects to be deleted will be marked as delete */
+	bool *delMark;
+
+	/*the pointers in the ptrArray are one-to-one associated with the elem in dataArray.
+	No matter what the data is, the pointer points to the same data.
+	However, the ptrArray and delMark are one-to-one corresponding, i.e., ptrArray is sorted
+	with delMark*/
+
+	unsigned int numElem;
+	unsigned int numElemMax;
+	unsigned int incCount;
+	unsigned int decCount;
+public:
+	__device__ int assign();
+	__device__ void remove(int idx);
+	__device__ void link();
+	__host__ void alloc(int nElem, int nElemMax);
+	__host__ Pool(int nElem, int nElemMax);
+
+	friend __global__ void poolUtil::initPool(Pool<Obj> *pDev);
+	friend __global__ void poolUtil::cleanupDevice(Pool<Obj> *pDev);
+	friend void poolUtil::cleanup(Pool<Obj> *pHost, Pool<Obj> *pDev);
+};
+
+//Pool implementation
+template<class Obj> __device__ int Pool<Obj>::assign()
+{
+	int idx = atomicInc(&incCount, numElemMax-numElem) + numElem;
+	this->delMark[idx] = false;
+	return this->idxArray[idx];
+}
+template<class Obj> __device__ void Pool<Obj>::remove(int idx)
+{
+	delMark[idx] = true;
+	atomicInc(&decCount, numElem);
+}
+template<class Obj> __host__ void Pool<Obj>::alloc(int nElem, int nElemMax){
+	printf("sizeof obj in Pool<Obj>::alloc: %d\n", sizeof(Obj));
+	this->numElem = nElem;
+	this->numElemMax = nElemMax;
+	this->incCount = 0;
+	this->decCount = 0;
+	cudaMalloc((void**)&this->delMark, nElemMax * sizeof(bool));
+	cudaMalloc((void**)&this->dataArray, nElemMax * sizeof(Obj));
+	cudaMalloc((void**)&this->idxArray, nElemMax * sizeof(int));
+	cudaMemset(this->dataArray, 0xff, nElemMax * sizeof(Obj));
+	cudaMemset(this->idxArray, 0x00, nElemMax * sizeof(int));
+	cudaMemset(this->delMark, 1, nElemMax * sizeof(bool));
+}
+template<class Obj> __host__ Pool<Obj>::Pool(int nElem, int nElemMax){
+	this->alloc(nElem, nElemMax);
+}
+
+//poolUtil implementation
+template<class Obj> __global__ void poolUtil::initPool(Pool<Obj> *pDev) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx < pDev->numElemMax)
+		pDev->idxArray[idx] = idx;
+}
+template<class Obj> __global__ void poolUtil::cleanupDevice(Pool<Obj> *pDev)
+{
+	pDev->numElem = pDev->numElem + pDev->incCount - pDev->decCount;
+	pDev->incCount = 0;
+	pDev->decCount = 0;
+}
+template<class Obj> void poolUtil::cleanup(Pool<Obj> *pHost, Pool<Obj> *pDev)
+{
+	/**/
+	int *ptrArrayLocal = (int*)pHost->idxArray;
+	bool *delMarkLocal = pHost->delMark;
+
+	thrust::device_ptr<int> objPtr(ptrArrayLocal);
+	thrust::device_ptr<bool> dMarkPtr(delMarkLocal);
+	typedef thrust::device_vector<int>::iterator idxIter;
+	typedef thrust::device_vector<bool>::iterator dMarkIter;
+	dMarkIter keyBegin(dMarkPtr);
+	dMarkIter keyEnd(dMarkPtr + pHost->numElemMax);
+	idxIter valBegin(objPtr);
+	thrust::sort_by_key(keyBegin, keyEnd, valBegin, thrust::less<int>());
+
+	cleanupDevice<<<1, 1>>>(pDev);
+	cudaMemcpy(pHost, pDev, sizeof(Pool<Obj>), cudaMemcpyDeviceToHost);
+}
 #endif

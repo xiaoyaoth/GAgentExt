@@ -246,7 +246,7 @@ __global__ void setAgentNoD(){
 
 void oneStep(BoidModel *model, BoidModel *model_h){
 	int gSize = GRID_SIZE;
-	unsigned int AGENT_NO_INC = 0, AGENT_NO_DEC = 0;
+
 	size_t sizeOfSmem = BLOCK_SIZE * (
 		4*sizeof(int)
 		+ sizeof(dataUnion)
@@ -256,20 +256,7 @@ void oneStep(BoidModel *model, BoidModel *model_h){
 	getLastCudaError("end genNeighbor");
 	step<<<gSize, BLOCK_SIZE, sizeOfSmem>>>(model);
 	getLastCudaError("end step");	
-	util::setAlistNull<<<gSize, BLOCK_SIZE>>>(model_h->scheduler, model_h->world);
 
-	cudaMemcpyFromSymbol(&AGENT_NO_INC, AGENT_NO_INC_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
-	cudaMemcpyFromSymbol(&AGENT_NO_DEC, AGENT_NO_DEC_D, sizeof(int), 0, cudaMemcpyDeviceToHost);
-	getLastCudaError("end cudaMemcpyFromSymbol");
-
-	AGENT_NO += AGENT_NO_INC;
-	util::sortAList(model_h->schedulerH, model_h->worldH);
-	//util::sortAList(model_h->schedulerH);
-	//getLastCudaError("end clean up Continuous2D");
-
-	setAgentNoD<<<1, 1>>>();
-	AGENT_NO -= AGENT_NO_DEC;
-	getLastCudaError("end setAgentNoD");
 	GRID_SIZE = AGENT_NO%BLOCK_SIZE==0 ? AGENT_NO/BLOCK_SIZE : AGENT_NO/BLOCK_SIZE + 1;
 	getLastCudaError("end loop");
 }
@@ -284,7 +271,7 @@ void mainWork(char *config_file){
 	model_h->allocOnDevice();
 	BoidModel *model;
 	cudaMalloc((void**)&model, sizeof(BoidModel));
-	cudaMemcpy(model, model_h, sizeof(BoidModel), cudaMemcpyHostToDevice);	
+	cudaMemcpy(model, model_h, sizeof(BoidModel), cudaMemcpyHostToDevice);
 
 	float *x_pos, *y_pos;
 	size_t floatDataSize = AGENT_NO*sizeof(float);
@@ -293,7 +280,7 @@ void mainWork(char *config_file){
 	initOnDevice(x_pos, y_pos);
 
 	//printf("size taken by the one agent:%d and all agents: %d\n",
-		//sizeof(PreyBoid), AGENT_NO*sizeof(PreyBoid));
+	//sizeof(PreyBoid), AGENT_NO*sizeof(PreyBoid));
 	//printf("size taken by one iterInfo: %d\n", sizeof(iterInfo));
 	//printf("size taken by one dataUnion: %d\n", sizeof(dataUnion));
 	size_t pVal;

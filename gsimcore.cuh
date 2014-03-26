@@ -40,11 +40,6 @@ namespace util{
 	__global__ void gen_cellIdx_kernel(int *hash, Continuous2D *c2d);
 	void queryNeighbor(Continuous2D *c2d);
 	void genNeighbor(Continuous2D *world, Continuous2D *world_h);
-	
-	__global__ void setAlistNull(GScheduler *sch);
-	__global__ void setAlistNull(GScheduler *sch, Continuous2D *world);
-	void sortAList(GScheduler *sch_h);
-	void sortAList(GScheduler *sch_h, Continuous2D *world_h);
 };
 
 class GSteppable{
@@ -77,7 +72,8 @@ public:
 	float height;
 	float discretization;
 private:
-	GAgent **allAgents;
+	Pool<GAgent> *allAgents;
+	Pool<GAgent> *allAgentsHostCopy;
 	int *neighborIdx;
 	int *cellIdxStart;
 	int *cellIdxEnd;
@@ -114,9 +110,6 @@ public:
 	friend __global__ void util::gen_cellIdx_kernel(int *hash, Continuous2D *c2d);
 	friend void util::genNeighbor(Continuous2D *world, Continuous2D *world_h);
 	friend void util::queryNeighbor(Continuous2D *c2d);
-
-	friend __global__ void util::setAlistNull(GScheduler *sch, Continuous2D *world);
-	friend void util::sortAList(GScheduler *sch, Continuous2D *world_h);
 	//friend class GModel;
 };
 class GScheduler{
@@ -137,11 +130,6 @@ public:
 	__device__ bool remove(GAgent *ag);
 	void allocOnHost();
 	void allocOnDevice();
-
-	friend __global__ void util::setAlistNull(GScheduler *sch);
-	friend void util::sortAList(GScheduler *sch_h);
-	friend __global__ void util::setAlistNull(GScheduler *sch, Continuous2D *world);
-	friend void util::sortAList(GScheduler *sch, Continuous2D *world_h);
 };
 class GModel{
 public:
@@ -173,7 +161,9 @@ void Continuous2D::allocOnDevice(){
 	size_t sizeAgArray = MAX_AGENT_NO*sizeof(int);
 	size_t sizeCellArray = CELL_NO*sizeof(int);
 
-	cudaMalloc((void**)&this->allAgents, MAX_AGENT_NO*sizeof(GAgent*));
+	this->allAgentsHostCopy = new Pool<GAgent>(AGENT_NO, MAX_AGENT_NO);
+	cudaMalloc((void**)&this->allAgents, sizeof(Pool<GAgent>));
+	cudaMemcpy(this->allAgents, this->allAgentsHostCopy, sizeof(Pool<GAgent>), cudaMemcpyHostToDevice);
 	getLastCudaError("Continuous2D():cudaMalloc:allAgents");
 	cudaMalloc((void**)&neighborIdx, sizeAgArray);
 	getLastCudaError("Continuous2D():cudaMalloc:neighborIdx");
@@ -192,30 +182,28 @@ __device__ const int* Continuous2D::getNeighborIdx() const{
 	return this->neighborIdx;
 }
 __device__ bool Continuous2D::add(GAgent *ag, int idx) {
-	if(idx>=MAX_AGENT_NO_D)
-		return false;
-	this->allAgents[idx]=ag;
-	return true;
+	int refIdx = this->allAgents->assign();
 }
 __device__ GAgent* Continuous2D::obtainAgentPerThread() const {
-	const int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	GAgent *ag;
-	if (idx < AGENT_NO_D)
-		ag = this->allAgents[idx];
-	else
-		ag = NULL;
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	GAgent *ag = NULL;
+	if (idx < AGENT_NO_D) {
+		int refIdx = this->allAgents->idxArray[idx];
+		ag = &this->allAgents->dataArray[refIdx];
+	}
 	return ag;
 }
 __device__ GAgent* Continuous2D::obtainAgentByInfoPtr(int ptr) const {
-	GAgent *ag;
+	GAgent *ag = NULL;
 	if (ptr < AGENT_NO_D && ptr >= 0){
 		int agIdx = this->neighborIdx[ptr];
-		if (agIdx < AGENT_NO_D && agIdx >=0)
-			ag = this->allAgents[agIdx];
+		if (agIdx < AGENT_NO_D && agIdx >=0) {
+			int refIdx = this->allAgents->idxArray[agIdx];
+			ag = &this->allAgents->dataArray[refIdx];
+		}
 		else 
 			printf("Continuous2D::obtainAgentByInfoPtr:ptr:%d\n", ptr);
-	} else
-		ag = NULL;
+	} 
 	return ag;
 }
 __device__ float Continuous2D::stx(const float x) const{
@@ -636,70 +624,6 @@ void util::genNeighbor(Continuous2D *world, Continuous2D *world_h)
 	iterCount++;
 	cudaFree(hash);
 	getLastCudaError("genNeighbor:cudaFree:hash");
-}
-
-struct AlistComp {
-	//returning true means the one with satisfied condition will be put in the front
-	__host__ __device__
-		bool operator()(const GAgent *a, const GAgent *b) {
-			if (a != NULL)
-				return true;
-			return false;
-	}
-};
-__global__ void util::setAlistNull(GScheduler *sch, Continuous2D *world){
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx < AGENT_NO_D) {
-		GAgent *ag1 = world->allAgents[idx];
-		if (ag1->getDelMark() == true) {
-			world->allAgents[idx] = NULL;
-			ag1 = NULL;
-		}
-		GAgent *ag2 = sch->allAgents[idx];
-		if (ag2->getDelMark() == true) {
-			sch->allAgents[idx] = NULL;
-			delete ag2;
-			ag2 = NULL;
-		}
-	}
-}
-void util::sortAList(GScheduler *sch_h, Continuous2D *world_h) {
-	GAgent **alist = world_h->allAgents;
-	thrust::device_ptr<GAgent *> alist_ptr(alist);
-	typedef thrust::device_vector<GAgent *>::iterator Iter;
-	Iter key_begin(alist_ptr);
-	Iter key_end(alist_ptr + AGENT_NO);
-	thrust::sort(key_begin, key_end, AlistComp()); 
-
-	//cudaMemcpy(sch_h->allAgents, world_h->allAgents, AGENT_NO * sizeof(GAgent*), cudaMemcpyDeviceToDevice);
-
-	alist = sch_h->allAgents;
-	thrust::device_ptr<GAgent *> alist_ptr2(alist);
-	typedef thrust::device_vector<GAgent *>::iterator Iter;
-	Iter key_begin2(alist_ptr2);
-	Iter key_end2(alist_ptr2 + AGENT_NO);
-	thrust::sort(key_begin2, key_end2, AlistComp());
-
-	getLastCudaError("sortAList");
-}
-__global__ void util::setAlistNull(GScheduler *sch){
-	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx < AGENT_NO_D) {
-		GAgent *ag = sch->allAgents[idx];
-		if (ag->getDelMark() == true) {
-			sch->allAgents[idx] = NULL;
-			delete ag;
-		}
-	}
-}
-void util::sortAList(GScheduler *sch_h) {
-	GAgent **alist = sch_h->allAgents;
-	thrust::device_ptr<GAgent *> alist_ptr(alist);
-	typedef thrust::device_vector<GAgent *>::iterator Iter;
-	Iter key_begin(alist_ptr);
-	Iter key_end(alist_ptr + AGENT_NO);
-	thrust::sort(key_begin, key_end, AlistComp());
-	getLastCudaError("sortAList");
 }
 
 __global__ void step(GModel *gm){
